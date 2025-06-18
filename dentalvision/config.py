@@ -1,16 +1,175 @@
 class Config:
-    """Configuration class for the dental_xray_detection project."""
+    """Configuration class for the dental_xray_detection project - Colab only."""
     
-    # Default Google Drive directories
+    # =============================================================================
+    # GLOBAL SETTINGS
+    # =============================================================================
+    RANDOM_SEED = 42
+    DEBUG = False
+    VERBOSE = True
+    
+    # =============================================================================
+    # PATHS & DIRECTORIES (Colab-specific)
+    # =============================================================================
     RAW_DATA_DIR = "/content/drive/MyDrive/Dentex_raw"
     PROCESSED_DATA_DIR = "/content/drive/MyDrive/Dentex_processed"
+    CHECKPOINT_DIR = "/content/drive/MyDrive/Dentex_checkpoints"
+    LOG_DIR = "/content/drive/MyDrive/Dentex_logs"
     
-    # Dataset-specific settings
-    DATASET_NAME = "ibrahimhamamci/DENTEX"  # Hugging Face dataset identifier
-    TASKS = ["tooth_detection", "disease_detection"]  # Tasks to process
-    SPLITS = ["train", "val"]  # Data splits
+    # =============================================================================
+    # DATASET SETTINGS
+    # =============================================================================
+    DATASET_NAME = "ibrahimhamamci/DENTEX"
+    TASKS = ["tooth_detection", "disease_detection"]
     
-    # Add more configs as needed (e.g., model parameters, file extensions)
-
-
+    # Data splits
+    TRAIN_RATIO = 0.7
+    VAL_RATIO = 0.2
+    TEST_RATIO = 0.1
     
+    # Data loading
+    BATCH_SIZE = 16
+    NUM_WORKERS = 2  # Lower for Colab
+    PIN_MEMORY = True
+    
+    # =============================================================================
+    # IMAGE TRANSFORMS & AUGMENTATION
+    # =============================================================================
+    # Image dimensions
+    INPUT_SIZE = (512, 512)  # (height, width)
+    
+    # Normalization
+    NORMALIZE_MEAN = [0.485, 0.456, 0.406]  # ImageNet standard
+    NORMALIZE_STD = [0.229, 0.224, 0.225]   # ImageNet standard
+    
+    # Augmentation settings
+    AUGMENT = True
+    AUGMENT_PROB = 0.5
+    
+    # Augmentation parameters
+    BRIGHTNESS_LIMIT = 0.2
+    CONTRAST_LIMIT = 0.2
+    NOISE_LIMIT = (10.0, 50.0)
+    ROTATION_LIMIT = 15
+    
+    # =============================================================================
+    # MODEL SETTINGS
+    # =============================================================================
+    # Model architecture
+    MODEL_TYPE = "unet"  # "unet" or "maskrcnn"
+    IN_CHANNELS = 3      # RGB images
+    OUT_CHANNELS = 33    # 32 teeth + background
+    PRETRAINED = True
+    
+    # UNet specific
+    UNET_FEATURES_START = 64
+    UNET_NUM_LAYERS = 4
+    
+    # Mask R-CNN specific
+    MASKRCNN_BACKBONE = "resnet50"
+    MASKRCNN_TRAINABLE_LAYERS = 5
+    MASKRCNN_RPN_SCORE_THRESH = 0.05
+    MASKRCNN_BOX_SCORE_THRESH = 0.05
+    
+    # =============================================================================
+    # TRAINING SETTINGS
+    # =============================================================================
+    # Training parameters
+    NUM_EPOCHS = 100
+    LEARNING_RATE = 1e-4
+    WEIGHT_DECAY = 1e-5
+    GRADIENT_CLIP_VAL = 1.0
+    
+    # Optimizer
+    OPTIMIZER_TYPE = "adamw"  # "adam", "sgd", "adamw"
+    ADAM_BETA1 = 0.9
+    ADAM_BETA2 = 0.999
+    SGD_MOMENTUM = 0.9
+    
+    # Training features
+    MIXED_PRECISION = True
+    DEVICE = "cuda"
+    
+    # =============================================================================
+    # VALIDATION & CHECKPOINTING
+    # =============================================================================
+    # Validation
+    VAL_FREQUENCY = 1  # Validate every N epochs
+    EARLY_STOPPING_PATIENCE = 10
+    
+    # Checkpointing
+    SAVE_FREQUENCY = 5  # Save checkpoint every N epochs
+    KEEP_LAST_K_CHECKPOINTS = 3
+    SAVE_BEST_MODEL = True
+    
+    # =============================================================================
+    # LOGGING & MONITORING
+    # =============================================================================
+    EXPERIMENT_NAME = "dental_segmentation"
+    USE_WANDB = False
+    WANDB_PROJECT = "dental-xray-detection"
+    LOG_INTERVAL = 10  # Log every N batches
+    
+    # =============================================================================
+    # EVALUATION SETTINGS
+    # =============================================================================
+    # Metrics to track
+    TRACK_METRICS = ["dice", "iou", "pixel_accuracy"]
+    
+    # Inference settings
+    TEST_TIME_AUGMENTATION = False
+    SLIDING_WINDOW_INFERENCE = False
+    
+    @classmethod
+    def get_model_config(cls):
+        """Get model-specific configuration as a dict."""
+        if cls.MODEL_TYPE == "unet":
+            return {
+                "in_channels": cls.IN_CHANNELS,
+                "out_channels": cls.OUT_CHANNELS,
+                "features_start": cls.UNET_FEATURES_START,
+                "num_layers": cls.UNET_NUM_LAYERS,
+                "pretrained": cls.PRETRAINED
+            }
+        elif cls.MODEL_TYPE == "maskrcnn":
+            return {
+                "backbone": cls.MASKRCNN_BACKBONE,
+                "trainable_backbone_layers": cls.MASKRCNN_TRAINABLE_LAYERS,
+                "rpn_score_thresh": cls.MASKRCNN_RPN_SCORE_THRESH,
+                "box_score_thresh": cls.MASKRCNN_BOX_SCORE_THRESH,
+                "pretrained": cls.PRETRAINED
+            }
+        else:
+            raise ValueError(f"Unknown model type: {cls.MODEL_TYPE}")
+    
+    @classmethod
+    def get_optimizer_config(cls):
+        """Get optimizer configuration as a dict."""
+        base_config = {
+            "lr": cls.LEARNING_RATE,
+            "weight_decay": cls.WEIGHT_DECAY
+        }
+        
+        if cls.OPTIMIZER_TYPE == "adam":
+            base_config.update({
+                "betas": (cls.ADAM_BETA1, cls.ADAM_BETA2)
+            })
+        elif cls.OPTIMIZER_TYPE == "sgd":
+            base_config.update({
+                "momentum": cls.SGD_MOMENTUM
+            })
+        
+        return base_config
+    
+    @classmethod
+    def print_config(cls):
+        """Print current configuration."""
+        print("=" * 60)
+        print("CURRENT CONFIGURATION")
+        print("=" * 60)
+        
+        for attr_name in dir(cls):
+            if not attr_name.startswith('_') and not callable(getattr(cls, attr_name)):
+                value = getattr(cls, attr_name)
+                print(f"{attr_name}: {value}")
+        print("=" * 60)
