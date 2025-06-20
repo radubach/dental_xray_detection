@@ -1,20 +1,32 @@
+# dentalvision/config.py
+
+import os
+from pathlib import Path
+
+
 class Config:
-    """Configuration class for the dental_xray_detection project - Colab only."""
+    """Configuration class for DentalVision project."""
     
     # =============================================================================
-    # GLOBAL SETTINGS
-    # =============================================================================
-    RANDOM_SEED = 42
-    DEBUG = False
-    VERBOSE = True
-    
-    # =============================================================================
-    # PATHS & DIRECTORIES (Colab-specific)
+    # BASE PATHS
     # =============================================================================
     RAW_DATA_DIR = "/content/drive/MyDrive/Dentex_raw"
-    PROCESSED_DATA_DIR = "/content/drive/MyDrive/Dentex_processed"
-    CHECKPOINT_DIR = "/content/drive/MyDrive/Dentex_checkpoints"
-    LOG_DIR = "/content/drive/MyDrive/Dentex_logs"
+    
+    # =============================================================================  
+    # TASK-SPECIFIC PATHS (Explicit and testable)
+    # =============================================================================
+    
+    # Tooth detection/segmentation paths
+    TOOTH_ANNOTATION_FILE = os.path.join(RAW_DATA_DIR, 'DENTEX', 'train', 'training_data', 
+                                         'quadrant_enumeration', 'train_quadrant_enumeration.json')
+    TOOTH_IMAGE_DIR = os.path.join(RAW_DATA_DIR, 'DENTEX', 'train', 'training_data',
+                                   'quadrant_enumeration', 'xrays')
+    
+    # Disease classification paths  
+    DISEASE_ANNOTATION_FILE = os.path.join(RAW_DATA_DIR, 'DENTEX', 'train', 'training_data',
+                                           'quadrant-enumeration-disease', 'train_quadrant_enumeration_disease.json')
+    DISEASE_IMAGE_DIR = os.path.join(RAW_DATA_DIR, 'DENTEX', 'train', 'training_data',
+                                     'quadrant-enumeration-disease', 'xrays')
     
     # =============================================================================
     # DATASET SETTINGS
@@ -120,6 +132,58 @@ class Config:
     TEST_TIME_AUGMENTATION = False
     SLIDING_WINDOW_INFERENCE = False
     
+
+    # =============================================================================
+    # UTILITY METHODS
+    # =============================================================================
+    
+    @classmethod
+    def create_test_config(cls, sample_data_dir: str):
+        """Create a test configuration that uses sample data."""
+        test_config = cls()
+        
+        # Override paths to use sample data
+        test_config.TOOTH_ANNOTATION_FILE = os.path.join(sample_data_dir, 'annotations.json')
+        test_config.TOOTH_IMAGE_DIR = os.path.join(sample_data_dir, 'images')
+        test_config.DISEASE_ANNOTATION_FILE = os.path.join(sample_data_dir, 'annotations.json')  
+        test_config.DISEASE_IMAGE_DIR = os.path.join(sample_data_dir, 'images')
+        test_config.COCO_ANNOTATION_FILE = os.path.join(sample_data_dir, 'annotations.json')
+        test_config.COCO_IMAGE_DIR = os.path.join(sample_data_dir, 'images')
+        
+        return test_config
+    
+    @classmethod  
+    def from_dict(cls, config_dict: dict):
+        """Create config from dictionary (useful for testing)."""
+        config = cls()
+        for key, value in config_dict.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        return config
+    
+    def get_annotation_file(self, task_type: str) -> str:
+        """Get annotation file path for specific task."""
+        task_mapping = {
+            'teeth': self.TOOTH_ANNOTATION_FILE,
+            'tooth': self.TOOTH_ANNOTATION_FILE, 
+            'quadrant': self.TOOTH_ANNOTATION_FILE,
+            'disease': self.DISEASE_ANNOTATION_FILE,
+            'coco': self.COCO_ANNOTATION_FILE
+        }
+        return task_mapping.get(task_type, self.COCO_ANNOTATION_FILE)
+    
+    def get_image_dir(self, task_type: str) -> str:
+        """Get image directory path for specific task."""
+        task_mapping = {
+            'teeth': self.TOOTH_IMAGE_DIR,
+            'tooth': self.TOOTH_IMAGE_DIR,
+            'quadrant': self.TOOTH_IMAGE_DIR, 
+            'disease': self.DISEASE_IMAGE_DIR,
+            'coco': self.COCO_IMAGE_DIR
+        }
+        return task_mapping.get(task_type, self.COCO_IMAGE_DIR)
+
+
     @classmethod
     def get_model_config(cls):
         """Get model-specific configuration as a dict."""

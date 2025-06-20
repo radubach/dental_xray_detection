@@ -170,28 +170,22 @@ class COCODataset(BaseDataset):
         print(f"Number of classes: {self.get_num_classes()}")
     
     def setup_paths(self):
-        """Set up COCO-specific paths based on task type."""
-        # Base paths from config
-        base_data_dir = getattr(self.config, 'RAW_DATA_DIR', '/content/drive/MyDrive/Dentex_raw')
+        """Set up paths based on task type using explicit config paths."""
         
-        # Task-specific paths
-        if self.task_type in ['teeth', 'quadrant']:
-            # Tooth detection/segmentation data
-            self.image_dir = os.path.join(base_data_dir, 'images')
-            self.annotation_file = getattr(self.config, 'TOOTH_ANNOTATION_FILE', 
-                                         os.path.join(base_data_dir, 'tooth_annotations.json'))
-        elif self.task_type == 'disease':
-            # Disease classification data
-            self.image_dir = os.path.join(base_data_dir, 'images')
-            self.annotation_file = getattr(self.config, 'DISEASE_ANNOTATION_FILE',
-                                         os.path.join(base_data_dir, 'disease_annotations.json'))
-        else:
-            # Default or combined
-            self.image_dir = os.path.join(base_data_dir, 'images')
-            self.annotation_file = getattr(self.config, 'COCO_ANNOTATION_FILE',
-                                         os.path.join(base_data_dir, 'annotations.json'))
+        # Get paths from config based on task type
+        self.annotation_file = self.config.get_annotation_file(self.task_type)
+        self.image_dir = self.config.get_image_dir(self.task_type)
         
-        self.mask_dir = getattr(self.config, 'MASK_DIR', None)  # Optional
+        # Validate paths exist (optional - could be skipped for testing)
+        if not os.path.exists(self.annotation_file):
+            print(f"Warning: Annotation file not found: {self.annotation_file}")
+        
+        if not os.path.exists(self.image_dir):
+            print(f"Warning: Image directory not found: {self.image_dir}")
+        
+        print(f"Dataset setup for task '{self.task_type}':")
+        print(f"  Annotation file: {self.annotation_file}")
+        print(f"  Image directory: {self.image_dir}")
     
     def _load_coco_file(self) -> COCO:
         """Load COCO annotation file."""
@@ -368,16 +362,22 @@ class COCODataset(BaseDataset):
     
     def get_category_info(self) -> Dict[int, Dict[str, Any]]:
         """Get mapping of category IDs to category information."""
-        return {cat['id']: cat for cat in self.coco.dataset['categories']}
-    
+        if hasattr(self, 'category_mapping') and self.category_mapping:
+            # For multi-category data, return the computed mapping
+            return self.category_mapping
+        else:
+            # Fallback for standard COCO format
+            return {cat['id']: cat for cat in self.coco.dataset.get('categories', [])}
+
     def get_class_names(self) -> List[str]:
         """Get list of class names in order of category IDs."""
-        categories = sorted(self.coco.dataset['categories'], key=lambda x: x['id'])
-        return [cat['name'] for cat in categories]
-    
+        # Use the pre-computed class names from setup_multi_categories()
+        return self.class_names if hasattr(self, 'class_names') else []
+
     def get_num_classes(self) -> int:
         """Get number of classes (categories) in dataset."""
-        return len(self.coco.dataset['categories'])
+        # Use the pre-computed num_classes from setup_multi_categories()
+        return self.num_classes if hasattr(self, 'num_classes') else 0
     
     @abstractmethod
     def __getitem__(self, idx: int) -> Dict[str, Any]:
