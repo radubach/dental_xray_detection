@@ -1,0 +1,8 @@
+setuptools
+albumentations
+numpy
+opencv-python  # Required by albumentations
+torch
+torchvision
+Pillow
+pycocotools

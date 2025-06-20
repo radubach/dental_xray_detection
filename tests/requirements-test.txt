@@ -1,0 +1,21 @@
+# Testing dependencies for dental_xray_detection
+
+# Core testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Mocking and test utilities
+# unittest-mock>=1.0.1 # not used in modern python
+
+# Image processing for tests
+Pillow>=9.0.0
+
+# PyTorch for tensor operations in tests
+torch>=1.12.0
+
+# COCO tools (optional, for integration tests)
+pycocotools>=2.0.6
+
+# Code coverage
+coverage>=6.0.0 
