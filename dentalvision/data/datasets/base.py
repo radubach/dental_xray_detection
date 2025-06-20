@@ -129,39 +129,68 @@ class COCODataset(BaseDataset):
     - Image loading from COCO metadata
     - Annotation parsing
     - COCO utilities
+
+    Supports multi-category annotations (category_id_1, category_id_2, category_id_3)
+    and automatically creates unified category mappings for different tasks.
     
     Child classes (UNet, Mask R-CNN, etc.) inherit this and implement
     model-specific __getitem__ methods for different mask formats.
     """
     
-    def __init__(self, config: Config, split: str = 'train'):
+    def __init__(self, config: Config, split: str = 'train', task_type: str = 'teeth'):
         """
         Initialize COCO dataset.
         
         Args:
             config: Configuration object containing COCO-specific paths
             split: Dataset split
+            task_type: Type of task - 'teeth', 'disease', 'quadrant', or 'combined'
+                - 'teeth': Uses combined category_id_1 + category_id_2 (32 tooth classes)
+                - 'disease': Uses category_id_3 (disease classes)
+                - 'quadrant': Uses category_id_1 (quadrant classes)
+                - 'combined': Uses all categories for multi-task learning
         """
         if not COCO_AVAILABLE:
             raise ImportError("pycocotools is required for COCO datasets. Install with: pip install pycocotools")
         
+        self.task_type = task_type
         super().__init__(config, split)
         
         # Load COCO annotation file
         self.coco = self._load_coco_file()
         
+        # Process categories based on task type
+        self._setup_categories()
+        
         # Get image IDs and validate
         self.image_ids = list(sorted(self.coco.imgs.keys()))
         self._validate_dataset()
         
-        print(f"COCO dataset initialized with {len(self.image_ids)} images")
+        print(f"COCO dataset initialized with {len(self.image_ids)} images for task: {task_type}")
+        print(f"Number of classes: {self.get_num_classes()}")
     
     def setup_paths(self):
-        """Set up COCO-specific paths."""
-        # These should come from your config
-        # For now, using placeholder paths - update based on your config structure
-        self.image_dir = getattr(self.config, 'RAW_DATA_DIR', '/content/drive/MyDrive/Dentex_raw/images')
-        self.annotation_file = getattr(self.config, 'COCO_ANNOTATION_FILE', '/content/drive/MyDrive/Dentex_raw/annotations.json')
+        """Set up COCO-specific paths based on task type."""
+        # Base paths from config
+        base_data_dir = getattr(self.config, 'RAW_DATA_DIR', '/content/drive/MyDrive/Dentex_raw')
+        
+        # Task-specific paths
+        if self.task_type in ['teeth', 'quadrant']:
+            # Tooth detection/segmentation data
+            self.image_dir = os.path.join(base_data_dir, 'images')
+            self.annotation_file = getattr(self.config, 'TOOTH_ANNOTATION_FILE', 
+                                         os.path.join(base_data_dir, 'tooth_annotations.json'))
+        elif self.task_type == 'disease':
+            # Disease classification data
+            self.image_dir = os.path.join(base_data_dir, 'images')
+            self.annotation_file = getattr(self.config, 'DISEASE_ANNOTATION_FILE',
+                                         os.path.join(base_data_dir, 'disease_annotations.json'))
+        else:
+            # Default or combined
+            self.image_dir = os.path.join(base_data_dir, 'images')
+            self.annotation_file = getattr(self.config, 'COCO_ANNOTATION_FILE',
+                                         os.path.join(base_data_dir, 'annotations.json'))
+        
         self.mask_dir = getattr(self.config, 'MASK_DIR', None)  # Optional
     
     def _load_coco_file(self) -> COCO:
@@ -240,6 +269,102 @@ class COCODataset(BaseDataset):
         image_id = self.image_ids[idx]
         ann_ids = self.coco.getAnnIds(imgIds=image_id)
         return self.coco.loadAnns(ann_ids)
+    
+    def _setup_categories(self):
+        """
+        Set up category mappings based on task type.
+        
+        Handles multi-category annotations by creating appropriate mappings
+        for different tasks without requiring data preprocessing.
+        """
+        # Check if we have multi-category data
+        sample_anns = list(self.coco.anns.values())[:5]  # Check first 5 annotations
+        has_multi_categories = any('category_id_1' in ann for ann in sample_anns)
+        
+        if has_multi_categories:
+            self._setup_multi_categories()
+        else:
+            self._setup_standard_categories()
+
+    def _setup_multi_categories(self):
+        """Handle multi-category annotations (category_id_1, category_id_2, category_id_3)."""
+        print(f"Detected multi-category annotations. Setting up for task: {self.task_type}")
+        
+        if self.task_type == 'teeth':
+            # Combine quadrant (0-3) and tooth (0-7) into single tooth class (0-31)
+            self.category_mapping = {}
+            self.class_names = []
+            
+            # Create 32 tooth classes: quadrant * 8 + tooth_in_quad
+            for quad in range(4):
+                for tooth in range(8):
+                    tooth_id = quad * 8 + tooth
+                    tooth_name = f"Q{quad+1}T{tooth+1}"  # Q1T1, Q1T2, etc.
+                    self.category_mapping[(quad, tooth)] = tooth_id
+                    self.class_names.append(tooth_name)
+            
+            self.num_classes = 32
+            
+        elif self.task_type == 'disease':
+            # Use category_id_3 for disease classification
+            if 'categories_3' in self.coco.dataset:
+                disease_cats = self.coco.dataset['categories_3']
+                self.class_names = [cat['name'] for cat in sorted(disease_cats, key=lambda x: x['id'])]
+                self.num_classes = len(disease_cats)
+            else:
+                # Fallback: extract from annotations
+                disease_ids = set()
+                for ann in self.coco.anns.values():
+                    if 'category_id_3' in ann:
+                        disease_ids.add(ann['category_id_3'])
+                self.num_classes = len(disease_ids)
+                self.class_names = [f"Disease_{i}" for i in sorted(disease_ids)]
+                
+        elif self.task_type == 'quadrant':
+            # Use category_id_1 for quadrant classification
+            self.num_classes = 4
+            self.class_names = ["Q1", "Q2", "Q3", "Q4"]
+            
+        else:
+            raise ValueError(f"Unsupported task type for multi-category data: {self.task_type}")
+        
+    def _setup_standard_categories(self):
+        """Handle standard COCO categories."""
+        if 'categories' in self.coco.dataset:
+            categories = sorted(self.coco.dataset['categories'], key=lambda x: x['id'])
+            self.class_names = [cat['name'] for cat in categories]
+            self.num_classes = len(categories)
+        else:
+            # Fallback: extract from annotations
+            category_ids = set(ann['category_id'] for ann in self.coco.anns.values())
+            self.num_classes = len(category_ids)
+            self.class_names = [f"Class_{i}" for i in sorted(category_ids)]
+
+    def get_unified_category_id(self, annotation: Dict[str, Any]) -> int:
+        """
+        Get unified category ID based on task type and annotation format.
+        
+        Args:
+            annotation: COCO annotation dictionary
+            
+        Returns:
+            Unified category ID for the current task
+        """
+        # Handle multi-category annotations
+        if 'category_id_1' in annotation:
+            if self.task_type == 'teeth':
+                quad = annotation['category_id_1']
+                tooth = annotation['category_id_2']
+                return self.category_mapping[(quad, tooth)]
+            elif self.task_type == 'disease':
+                return annotation['category_id_3']
+            elif self.task_type == 'quadrant':
+                return annotation['category_id_1']
+            else:
+                raise ValueError(f"Unsupported task type: {self.task_type}")
+        else:
+            # Standard COCO format
+            return annotation['category_id']
     
     def get_category_info(self) -> Dict[int, Dict[str, Any]]:
         """Get mapping of category IDs to category information."""
